@@ -184,249 +184,39 @@ gpcc.brick <- raster::mask(x = gpcc.brick3, mask = CRC.outline)
 rm(gpcc.brick2, gpcc.brick3,tt1,tt2,tt3,CRC.extent)  
 # ------------------------------------------------------------------------------
 
-
-# ------------------------------------------------------------------------------
-
-
-
-
 # -----------------------------------------------------------------------------#
-# --- Extract values of weather variables ----  
+# --- Visualize slices of GPCC data for CRC area ----
 
-prcp.matrix <- array(dim = c(n.y_coord_vals, n.x_coord_vals,
-  n.time_coord_vals))
+colors <- RColorBrewer::brewer.pal(9, 'Blues')
+n.colors <- length(colors)
 
-tmax.matrix <- array(dim = c(n.y_coord_vals, n.x_coord_vals,
-  n.time_coord_vals))
+my.at <- seq(from = 0, to = 400, length.out = n.colors)
 
-tmin.matrix <- array(dim = c(n.y_coord_vals, n.x_coord_vals,
-  n.time_coord_vals))
+myColorkey <- list(space = 'right',
+  at = my.at, ## where the colors change
+  col = colors,
+  labels = list(
+      labels = as.character(my.at),
+      at = my.at ## where to print labels
+  )
+)
 
-for (i in 1:n.time_coord_vals) {
+use.layer <- 1000  # Brick layer to plot
 
-  prcp.layer <- t(
-    ncdf4::ncvar_get(nc, varid = "prcp",
-    start = c(1, 1, 1, i),
-    count = c(1, n.x_coord_vals, n.y_coord_vals, 1),
-    verbose = FALSE) )
-  
-  tmax.layer <- t(
-    ncdf4::ncvar_get(nc, varid = "tmax",
-      start = c(1, 1, 1, i),
-      count = c(1, n.x_coord_vals, n.y_coord_vals, 1),
-      verbose = FALSE) )
-  
-  tmin.layer <- t(
-    ncdf4::ncvar_get(nc, varid = "tmin",
-      start = c(1, 1, 1, i),
-      count = c(1, n.x_coord_vals, n.y_coord_vals, 1),
-      verbose = FALSE) )
-  
-  prcp.matrix[,, i] <- prcp.layer
-  tmax.matrix[,, i] <- tmax.layer
-  tmin.matrix[,, i] <- tmin.layer
-  
-}
-# ------------------------------------------------------------------------------
+p <- rasterVis::levelplot(gpcc.brick,
+  layer = use.layer,
+  margin = FALSE,
+  colorkey = myColorkey,
+  col.regions = colors,
+  contour = FALSE,
+  main = paste('GPCC Prcp - ', as.character(raster::getZ(gpcc.brick)[use.layer])))
 
-# -----------------------------------------------------------------------------#
-# --- Build raster bricks for each weather variable ----
-
-half_delta_x <- (x_coord_vals[2] - x_coord_vals[1]) / 2
-half_delta_y <- (y_coord_vals[2] - y_coord_vals[1]) / 2
-
-x.min <- min(x_coord_vals) - half_delta_x
-x.max <- max(x_coord_vals) + half_delta_x
-y.min <- min(y_coord_vals) - half_delta_y
-y.max <- max(y_coord_vals) + half_delta_y
-
-prcp.brick <- raster::brick(prcp.matrix,
-  crs = sp::CRS(GK.string),
-  xmn = x.min,
-  xmx = x.max,
-  ymn = y.min,
-  ymx = y.max)
-
-tmax.brick <- raster::brick(tmax.matrix,
-  crs = sp::CRS(GK.string),
-  xmn = x.min,
-  xmx = x.max,
-  ymn = y.min,
-  ymx = y.max)
-
-tmin.brick <- raster::brick(tmin.matrix,
-  crs = sp::CRS(GK.string),
-  xmn = x.min,
-  xmx = x.max,
-  ymn = y.min,
-  ymx = y.max)
-
-# --- Mask cells outside the Salado A Basin
-
-prcp.brick2 <- raster::mask(prcp.brick, cuenca.A.GK)
-tmax.brick2 <- raster::mask(tmax.brick, cuenca.A.GK)
-tmin.brick2 <- raster::mask(tmin.brick, cuenca.A.GK)
-
-# --- Set z-coordinate as dates for masked rasters
-
-prcp.brick2 <- raster::setZ(prcp.brick2, date_coords, 'dates')
-tmax.brick2 <- raster::setZ(tmax.brick2, date_coords, 'dates')
-tmin.brick2 <- raster::setZ(tmin.brick2, date_coords, 'dates')
-# ------------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------#
-# --- Plot a few slices of bricks ----
-
-p <- rasterVis::levelplot(prcp.brick2, layer = 1, margin = FALSE,
-  main = paste('Prcp - ', as.character(raster::getZ(prcp.brick2)[1])))
-p <- p + latticeExtra::layer(sp::sp.lines(cuenca.A.GK, lwd = 2,
-  col = 'steelblue'))
-plot(p)
-
-p <- rasterVis::levelplot(tmax.brick2, layer = 1, margin = FALSE,
-  main = paste('Tmax -', as.character(raster::getZ(tmax.brick2)[1])))
-p <- p + latticeExtra::layer(sp::sp.lines(cuenca.A.GK, lwd = 2,
-  col = 'steelblue'))
-plot(p)
-
-p <- rasterVis::levelplot(tmin.brick2, layer = 1, margin = FALSE,
-  main = paste('Tmin -', as.character(raster::getZ(tmin.brick2)[1])))
-p <- p + latticeExtra::layer(sp::sp.lines(cuenca.A.GK, lwd = 2,
-  col = 'steelblue'))
-plot(p)
-# ------------------------------------------------------------------------------
-
-
-# --- Calculate monthly mean of Tmax 
-
-uu3 <- raster::zApply(tmax.brick2,
-  by = as.yearmon,
-  fun = mean,
-  name = 'Monthly Tmax means')
-
-# --- Calculate monthly mean of Tmin 
-
-uu3b <- raster::zApply(tmin.brick2,
-  by = as.yearmon,
-  fun = mean,
-  name = 'Monthly Tmin means')
-
-# --- Calculate monthly total of prcp 
-
-uu4 <- raster::zApply(prcp.brick2,
-  by = as.yearmon,
-  fun = sum,
-  name = 'Monthly Prcp Totals')
-
-uu4 <- raster::mask(uu4, cuenca.A.GK) # Mask basin again
-
-ttt <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(9, 'Blues'))
-
-lll <- 18 # Monthly slice
-limites.valores <- seq(10, 180, 10)
-
-p <- rasterVis::levelplot(uu4, layer = lll, margin = FALSE,
-  main = paste('Prcp Total -', as.character(raster::getZ(uu4)[lll])),
-  at = c(0, 1, limites.valores),
-  col.regions = c('grey20', ttt(length(limites.valores) + 1)))
-p <- p + latticeExtra::layer(sp::sp.lines(cuenca.A.GK, lwd = 2,
+p <- p + latticeExtra::layer(sp::sp.lines(CRC.outline,
+  lwd = 2,
   col = 'tomato'))
+
 plot(p)
-
-
-
-
 # ------------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------#
-# --- Build RTS objects ----
-
-prcp.rts <- rts::rts(x = prcp.brick2, time = date_coords)
-tmax.rts <- rts::rts(x = tmax.brick2, time = date_coords)
-tmin.rts <- rts::rts(x = tmin.brick2, time = date_coords)
-
-uu5 <- rts::apply.monthly(x = prcp.rts, FUN = sum, na.rm = TRUE)
-
-plot(x = tmax.rts)
-
-# ------------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-# --- Read water table depth from netCDF file into a RasterBrick
-
-wtd.brick <- raster::brick(file.to.read,
-  values = TRUE,
-  crs = sp::CRS(GK.string),
-  varname = 'wtd')
-
-# --- Read times as Z coordinates (or layers)
-
-times <- raster::getZ(wtd.brick)  # Get back z-coordinates (time)
-wtd.dates <- as.Date(times, origin = as.Date(origin.date))
-wtd.brick <- raster::setZ(wtd.brick, wtd.dates, 'wtd.dates')
-
-p <- rasterVis::levelplot(wtd.brick, layer = 100, margin = FALSE,
-  main = as.character(getZ(wtd.brick)[100]))
-p <- p + layer(sp.lines(cuenca.A.GK, lwd = 2, col = 'steelblue'))
-plot(p)
-
-
-# --- Mask cells outside the Salado A Basin
-# --- Apparently the masking operation deleted the Z values as dates
-
-wtd.brick2 <- raster::mask(wtd.brick, cuenca.A.GK)
-wtd.brick2 <- raster::setZ(wtd.brick2, wtd.dates, 'wtd.dates')
-
-getZ(wtd.brick2)
-
-
-
-p <- rasterVis::levelplot(wtd.brick2, layer = 120, margin = FALSE,
-  main = as.character(getZ(wtd.brick2)[120]))
-p <- p + layer(sp.lines(cuenca.A.GK, lwd = 2, col = 'steelblue'))
-plot(p)
-
-
-# --- Calculate monthly mean of WTD
-
-uu3 <- raster::zApply(wtd.brick2,
-  by = as.yearmon,
-  fun = mean,
-  name = 'Monthly WTD means')
-
-# --- Calculate monthly median of WTD
-
-uu3 <- raster::zApply(wtd.brick2,
-  by = as.yearmon,
-  fun = median, na.rm = TRUE,
-  name = 'Monthly WTD medians')
-
-
-ttt <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(9, 'Blues'))
-
-lll <- 18
-
-p <- rasterVis::levelplot(uu3, layer = lll, margin = FALSE,
-  main = as.character(getZ(uu3)[lll]),
-  at = c(0.25, seq(0, -5, -0.1)),
-  col.regions = c(rev(ttt(51)), 'tomato'))
-p <- p + layer(sp.lines(cuenca.A.GK, lwd = 2, col = 'tomato'))
-plot(p)
-
-
 
 
 ncdf4::nc_close(nc)
-
-
-
